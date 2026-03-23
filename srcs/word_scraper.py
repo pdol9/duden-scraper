@@ -42,30 +42,75 @@ def fetch_duden_word(word: str):
     cleaned = raw.replace("\xad", "").replace(",", ", ")
     result["title"] = cleaned
 
-    # Bedeutungen
-    meanings = []
-    for li in soup.select("ol.enumeration li.enumeration__item"):
-        meaning_text = li.find("div", class_="enumeration__text")
-        meaning = meaning_text.get_text(strip=True) if meaning_text else ""
 
-        # Examples
+    # Bedeutungen
+
+    meanings = []
+
+    # Case 1 + 2 (enumeration)
+    for li in soup.select("#bedeutungen li.enumeration__item, #bedeutungen li.enumeration__sub-item"):
+        text_el = li.select_one(".enumeration__text")
+        if not text_el:
+            continue
+
+        meaning = text_el.get_text(strip=True).replace("\xad", "")
+
         examples = []
-        for ex in li.select("ul.note__list li"):
-            examples.append(ex.get_text(strip=True))
+        idioms = []
+
+        for dl in li.select("dl.note"):
+            title = dl.select_one(".note__title")
+            if not title:
+                continue
+
+            title_text = title.get_text(strip=True)
+
+            items = [li.get_text(strip=True) for li in dl.select("ul.note__list li")]
+
+            if "Beispiele" in title_text:
+                examples.extend(items)
+            elif "Wendungen" in title_text:
+                idioms.extend(items)
 
         meanings.append({
             "meaning": meaning,
-            "examples": examples
+            "examples": examples,
+            "idioms": idioms
         })
 
+
+    # Case 3 (single meaning)
+    if not meanings:
+        container = soup.select_one("#bedeutung")
+
+        if container:
+            # meaning
+            p = container.select_one("p")
+            meaning = p.get_text(strip=True).replace("\xad", "") if p else ""
+
+            examples = []
+            idioms = []
+
+            for dl in container.select("dl.note"):
+                title = dl.select_one(".note__title")
+                if not title:
+                    continue
+
+                title_text = title.get_text(strip=True)
+                items = [li.get_text(strip=True) for li in dl.select("ul.note__list li")]
+
+                if "Beispiele" in title_text:
+                    examples.extend(items)
+                elif "Wendungen" in title_text:
+                    idioms.extend(items)
+
+            meanings.append({
+                "meaning": meaning,
+                "examples": examples,
+                "idioms": idioms
+            })
+
     result["meanings"] = meanings
-
-    # Wendungen (idioms)
-    idioms = []
-    for item in soup.select("section#redewendungen li"):
-        idioms.append(item.get_text(strip=True))
-
-    result["idioms"] = idioms
 
     return result
 
@@ -79,15 +124,16 @@ def format_entry(data):
 
     for i, m in enumerate(data["meanings"], 1):
         lines.append(f"{i} -> {m['meaning']}")
+
         if m["examples"]:
             lines.append("Beispiele")
             for ex in m["examples"]:
                 lines.append(f"+ {ex}")
 
-    if data["idioms"]:
-        lines.append("Wendungen, Redensarten, Sprichwörter")
-        for idiom in data["idioms"]:
-            lines.append(f"- {idiom}")
+        if m["idioms"]:
+            lines.append("Wendungen, Redensarten, Sprichwörter")
+            for idiom in m["idioms"]:
+                lines.append(f"- {idiom}")
 
     return "\n".join(lines)
 
